@@ -757,62 +757,101 @@ function setupEventListeners() {
     document.getElementById('sim-btn').addEventListener('click', toggleNavigation); // Trigger real GPS tracking navigation!
     document.getElementById('voice-demo-btn').addEventListener('click', triggerVoiceDemo);
 
-    // Mobile panel drag handle
+    // Mobile panel drag handle (iPadOS/iOS style smooth translateY sheets)
     const panel = document.getElementById('control-panel');
     const dragHandle = document.querySelector('.drag-handle');
     
     let isDragging = false;
     let startY = 0;
-    let startHeight = 0;
+    let startTranslateY = 0;
+    let currentTranslateY = 0;
 
     dragHandle.addEventListener('touchstart', (e) => {
         isDragging = true;
         startY = e.touches[0].clientY;
-        const rect = panel.getBoundingClientRect();
-        startHeight = rect.height;
+        
+        // Extract current translateY from CSS transform matrix safely across browsers
+        let currentYVal = 0;
+        const style = window.getComputedStyle(panel);
+        const transform = style.transform || style.webkitTransform;
+        if (transform && transform !== 'none') {
+            if (window.DOMMatrix) {
+                currentYVal = new DOMMatrix(transform).m42;
+            } else if (window.WebKitCSSMatrix) {
+                currentYVal = new WebKitCSSMatrix(transform).m42;
+            } else {
+                const parts = transform.split(',');
+                if (parts.length >= 6) {
+                    currentYVal = parseFloat(parts[5]);
+                }
+            }
+        }
+        startTranslateY = currentYVal || 0;
+        
         panel.style.transition = 'none';
     });
 
     document.addEventListener('touchmove', (e) => {
         if (!isDragging) return;
+        
         const currentY = e.touches[0].clientY;
-        const diff = startY - currentY;
-        const newHeight = startHeight + diff;
+        const diffY = currentY - startY;
+        let newTranslateY = startTranslateY + diffY;
         
-        const screenHeight = window.innerHeight;
-        const newHeightPct = (newHeight / screenHeight) * 100;
+        const panelHeight = panel.offsetHeight;
+        const maxTranslateY = panelHeight - 60; // leave 60px visible for dragHandle/title
         
-        if (newHeightPct > 20 && newHeightPct < 90) {
-            panel.style.height = `${newHeightPct}%`;
-            panel.classList.remove('collapsed', 'expanded');
+        // Upper rubber banding (when user drags beyond fully expanded)
+        if (newTranslateY < 0) {
+            newTranslateY = newTranslateY * 0.2;
         }
-    });
+        // Bottom limit
+        if (newTranslateY > maxTranslateY) {
+            newTranslateY = maxTranslateY;
+        }
+        
+        currentTranslateY = newTranslateY;
+        panel.style.transform = `translateY(${newTranslateY}px)`;
+        
+        if (e.cancelable) {
+            e.preventDefault();
+        }
+    }, { passive: false });
 
     document.addEventListener('touchend', () => {
         if (!isDragging) return;
         isDragging = false;
-        panel.style.transition = 'var(--transition)';
         
-        const rect = panel.getBoundingClientRect();
-        const screenHeight = window.innerHeight;
-        const heightPct = (rect.height / screenHeight) * 100;
+        panel.style.transition = 'transform 0.3s cubic-bezier(0.25, 1, 0.5, 1)';
         
-        if (heightPct < 45) {
-            panel.style.height = '60%';
-            panel.classList.add('collapsed');
-        } else if (heightPct > 70) {
-            panel.style.height = '85%';
+        const panelHeight = panel.offsetHeight;
+        const expandedPos = 0;
+        const normalPos = panelHeight * 0.35;
+        const collapsedPos = panelHeight - 60;
+        
+        const distExpanded = Math.abs(currentTranslateY - expandedPos);
+        const distNormal = Math.abs(currentTranslateY - normalPos);
+        const distCollapsed = Math.abs(currentTranslateY - collapsedPos);
+        
+        // Remove manual inline transform to let CSS stylesheet clean classes handle it
+        panel.style.transform = '';
+        
+        if (distExpanded < distNormal && distExpanded < distCollapsed) {
+            panel.classList.remove('collapsed');
             panel.classList.add('expanded');
+        } else if (distCollapsed < distExpanded && distCollapsed < distNormal) {
+            panel.classList.remove('expanded');
+            panel.classList.add('collapsed');
         } else {
-            panel.style.height = '60%';
-            panel.classList.remove('collapsed', 'expanded');
+            panel.classList.remove('expanded', 'collapsed');
         }
     });
 
     dragHandle.addEventListener('click', () => {
         if (panel.classList.contains('collapsed')) {
-            panel.classList.remove('collapsed');
-            panel.style.height = '60%';
+            panel.classList.remove('collapsed', 'expanded');
+        } else if (panel.classList.contains('expanded')) {
+            panel.classList.remove('collapsed', 'expanded');
         } else {
             panel.classList.add('collapsed');
         }
@@ -1435,8 +1474,8 @@ function buildIncidentsUI() {
             
             if (window.innerWidth <= 768) {
                 const panel = document.getElementById('control-panel');
+                panel.classList.remove('expanded');
                 panel.classList.add('collapsed');
-                panel.style.height = '60%';
             }
         });
         
@@ -1683,8 +1722,8 @@ function toggleNavigation() {
         
         if (window.innerWidth <= 768) {
             const panel = document.getElementById('control-panel');
+            panel.classList.remove('expanded');
             panel.classList.add('collapsed');
-            panel.style.height = '60%';
         }
         
         const carIcon = L.divIcon({
