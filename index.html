@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Türkiye Güzergah Rehberi (Paralı Yollar, Radarlar ve Yol Çalışmaları)</title>
+    
+    <!-- FontAwesome & Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Leaflet Routing Machine CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+    
+    <!-- Custom Style -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="dark">
+
+    <!-- Loading Screen Overlay -->
+    <div id="loading-screen">
+        <div class="loader-content">
+            <!-- Technology Hexagon SVG Logo (Emirli Dijital Hizmetleri) -->
+            <svg class="tech-logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <polygon class="hex-poly" points="50,8 86,29 86,71 50,92 14,71 14,29" />
+                <path class="letter-e-path" d="M35,32 H65 M35,50 H58 M35,68 H65 M35,32 V68" />
+                <circle cx="35" cy="32" r="3" class="node-dot" />
+                <circle cx="65" cy="32" r="3" class="node-dot animated-dot" />
+                <circle cx="35" cy="50" r="3" class="node-dot" />
+                <circle cx="58" cy="50" r="3" class="node-dot animated-dot-2" />
+                <circle cx="35" cy="68" r="3" class="node-dot" />
+                <circle cx="65" cy="68" r="3" class="node-dot animated-dot-3" />
+            </svg>
+            <div class="company-name">EMİRLİ</div>
+            <div class="company-sub">DİJİTAL HİZMETLERİ</div>
+            <div class="loader-spinner"></div>
+        </div>
+    </div>
+
+
+    <!-- Leaflet Map Container -->
+    <div id="map"></div>
+
+    <!-- Floating Action Controls (Top Right) -->
+    <div class="floating-controls">
+        <button id="theme-toggle" class="fab" title="Tema Değiştir">
+            <i class="fas fa-moon"></i>
+        </button>
+        <button id="voice-toggle" class="fab active" title="Sesli Uyarılar">
+            <i class="fas fa-volume-up"></i>
+            <div id="speech-indicator" class="speech-dot"></div>
+        </button>
+        <button id="gps-btn" class="fab" title="Konumumu Bul">
+            <i class="fas fa-crosshairs"></i>
+        </button>
+    </div>
+
+    <!-- Top Floating Warning Alert HUD -->
+    <div id="alert-hud" class="alert-hud">
+        <i class="fas fa-info-circle"></i>
+        <span>Türkiye Güzergah Rehberi</span>
+    </div>
+
+    <!-- Navigation Simulation HUD (Appears during simulation) -->
+    <div id="nav-hud" class="nav-hud">
+        <div class="nav-hud-top">
+            <i class="fas fa-location-arrow nav-hud-icon"></i>
+            <div class="nav-hud-info">
+                <span id="hud-instr" class="nav-hud-instruction">Rota İzleniyor...</span>
+                <span id="hud-desc" class="nav-hud-distance">Hesaplanıyor...</span>
+            </div>
+        </div>
+        <div class="nav-hud-progress-container">
+            <div id="hud-progress" class="nav-hud-progress"></div>
+        </div>
+    </div>
+
+    <!-- Control Panel Sidebar / Bottom Sheet -->
+    <div id="control-panel" class="panel">
+        <div class="drag-handle"></div>
+        
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 20px;">
+            <h1 class="panel-title" style="font-size: 18px; margin: 0;">
+                <i class="fas fa-route"></i> TR <span id="title-accent">Güzergah Rehberi</span>
+            </h1>
+            <div class="custom-select-container">
+                <button id="lang-dropdown-btn" class="custom-select-btn" title="Language / Dil">
+                    <span id="current-lang-display"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="30" height="20" fill="#e30a17"/><circle cx="11.5" cy="10" r="5" fill="#fff"/><circle cx="13" cy="10" r="4" fill="#e30a17"/><polygon points="18.5,7.5 19.1,9.3 21,9.3 19.5,10.5 20.1,12.3 18.5,11.1 16.9,12.3 17.5,10.5 16,9.3 17.9,9.3" fill="#fff"/></svg></span>
+                </button>
+                <div id="lang-dropdown-menu" class="custom-select-menu">
+                    <div class="custom-select-option" data-value="tr"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="30" height="20" fill="#e30a17"/><circle cx="11.5" cy="10" r="5" fill="#fff"/><circle cx="13" cy="10" r="4" fill="#e30a17"/><polygon points="18.5,7.5 19.1,9.3 21,9.3 19.5,10.5 20.1,12.3 18.5,11.1 16.9,12.3 17.5,10.5 16,9.3 17.9,9.3" fill="#fff"/></svg></div>
+                    <div class="custom-select-option" data-value="en"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="30" height="20" fill="#bb133e"/><rect width="30" height="1.54" y="1.54" fill="#fff"/><rect width="30" height="1.54" y="4.62" fill="#fff"/><rect width="30" height="1.54" y="7.69" fill="#fff"/><rect width="30" height="1.54" y="10.77" fill="#fff"/><rect width="30" height="1.54" y="13.85" fill="#fff"/><rect width="30" height="1.54" y="16.92" fill="#fff"/><rect width="12" height="10.77" fill="#002147"/><polygon points="6,4 6.4,5.2 7.6,5.2 6.6,6 7,7.2 6,6.4 5,7.2 5.4,6 4.4,5.2 5.6,5.2" fill="#fff"/></svg></div>
+                    <div class="custom-select-option" data-value="es"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="30" height="5" fill="#c60b1e"/><rect width="30" height="10" y="5" fill="#ffc400"/><rect width="30" height="5" y="15" fill="#c60b1e"/><circle cx="8" cy="10" r="2.5" fill="#c60b1e"/><circle cx="8" cy="10" r="1.5" fill="#ffc400"/></svg></div>
+                    <div class="custom-select-option" data-value="fr"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="10" height="20" fill="#00209f"/><rect width="10" height="20" x="10" fill="#ffffff"/><rect width="10" height="20" x="20" fill="#e12627"/></svg></div>
+                    <div class="custom-select-option" data-value="zh"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="30" height="20" fill="#ee1c25"/><polygon points="5,3 5.4,4.2 6.6,4.2 5.6,5 6,6.2 5,5.4 4,6.2 4.4,5 3.4,4.2 4.6,4.2" fill="#ffde00"/><circle cx="9" cy="2" r="0.5" fill="#ffde00"/><circle cx="10" cy="4" r="0.5" fill="#ffde00"/><circle cx="10" cy="6" r="0.5" fill="#ffde00"/><circle cx="9" cy="8" r="0.5" fill="#ffde00"/></svg></div>
+                    <div class="custom-select-option" data-value="it"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="10" height="20" fill="#009246"/><rect width="10" height="20" x="10" fill="#ffffff"/><rect width="10" height="20" x="20" fill="#f12d36"/></svg></div>
+                    <div class="custom-select-option" data-value="de"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="30" height="6.67" fill="#000000"/><rect width="30" height="6.67" y="6.67" fill="#dd0000"/><rect width="30" height="6.67" y="13.34" fill="#ffcc00"/></svg></div>
+                    <div class="custom-select-option" data-value="nl"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="30" height="6.67" fill="#ae1c28"/><rect width="30" height="6.67" y="6.67" fill="#ffffff"/><rect width="30" height="6.67" y="13.34" fill="#21468b"/></svg></div>
+                    <div class="custom-select-option" data-value="ru"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="30" height="6.67" fill="#ffffff"/><rect width="30" height="6.67" y="6.67" fill="#0039a6"/><rect width="30" height="6.67" y="13.34" fill="#d52b1e"/></svg></div>
+                    <div class="custom-select-option" data-value="ku"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="30" height="6.67" fill="#e62020"/><rect width="30" height="6.67" y="6.67" fill="#ffffff"/><rect width="30" height="6.67" y="13.34" fill="#268e26"/><circle cx="15" cy="10" r="2.2" fill="#fecb00"/><path d="M15,7.3 V12.7 M12.3,10 H17.7 M13.1,8.1 L16.9,11.9 M13.1,11.9 L16.9,8.1" stroke="#fecb00" stroke-width="0.8"/></svg></div>
+                    <div class="custom-select-option" data-value="zza"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="30" height="6.67" fill="#0080ff"/><rect width="30" height="6.67" y="6.67" fill="#ffffff"/><rect width="30" height="6.67" y="13.34" fill="#009933"/></svg></div>
+                    <div class="custom-select-option" data-value="ar"><svg class="flag-icon" viewBox="0 0 30 20"><rect width="30" height="20" fill="#006c35"/><path d="M7,12 H23 M9,11 V13 M19,10.5 C19,10.5 17,9.5 15,9.5 C13,9.5 11,10.5 11,10.5" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" fill="none"/></svg></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="panel-body">
+            <!-- Route Input Form -->
+            <div class="form-group">
+                <label id="label-start" class="form-label" for="start-input">Başlangıç Noktası</label>
+                <div class="select-container">
+                    <input type="text" id="start-input" class="search-input" placeholder="İl veya ilçe arayın (veya GPS kullanın)" autocomplete="off">
+                    <i class="fas fa-map-marker-alt input-icon" style="color: var(--accent-color);"></i>
+                </div>
+                <div id="start-suggestions" class="suggestions-list"></div>
+            </div>
+
+            <div class="form-group">
+                <label id="label-dest" class="form-label" for="dest-input">Varış Noktası</label>
+                <div class="select-container">
+                    <input type="text" id="dest-input" class="search-input" placeholder="Gideceğiniz il veya ilçeyi yazın" autocomplete="off">
+                    <i class="fas fa-flag input-icon" style="color: var(--radar-color);"></i>
+                </div>
+                <div id="dest-suggestions" class="suggestions-list"></div>
+            </div>
+
+            <button id="route-btn" class="btn btn-primary">
+                <i class="fas fa-location-arrow"></i> <span id="btn-route-text">Yol Tarifi Hesapla</span>
+            </button>
+
+            <!-- Route Stats Wrapper (hidden initially) -->
+            <div id="route-info" style="display: none;">
+                <div class="route-stats">
+                    <div class="stat-card">
+                        <span id="label-distance" class="stat-label">Toplam Mesafe</span>
+                        <span id="stat-distance" class="stat-value">-</span>
+                    </div>
+                    <div class="stat-card">
+                        <span id="label-duration" class="stat-label">Tahmini Süre</span>
+                        <span id="stat-duration" class="stat-value">-</span>
+                    </div>
+                </div>
+
+                <!-- Simulation & Voice actions -->
+                <div style="display: flex; gap: 8px; margin-top: 12px;">
+                    <button id="sim-btn" class="btn btn-primary" style="flex-grow: 1;" disabled>
+                        <i class="fas fa-location-arrow"></i> <span id="btn-sim-text">Navigasyonu Başlat</span>
+                    </button>
+                    <button id="voice-demo-btn" class="btn btn-secondary" title="Sesli Olayları Test Et">
+                        <i class="fas fa-volume-high"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filters section -->
+            <div style="margin-top: 8px;">
+                <div id="title-filters" class="warning-section-title">
+                    <i class="fas fa-sliders"></i> Gösterilecek Olaylar
+                </div>
+                
+                <div class="switch-group">
+                    <div class="switch-label">
+                        <span id="title-tolls" class="switch-title">Paralı Otoyollar ve Köprüler</span>
+                        <span id="desc-tolls" class="switch-desc">Otoban ücretleri ve geçiş noktaları</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="filter-tolls" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div class="switch-group">
+                    <div class="switch-label">
+                        <span id="title-radars" class="switch-title">Hız Denetim Radarları</span>
+                        <span id="desc-radars" class="switch-desc">Sabit ve mobil EDS kontrol noktaları</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="filter-radars" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div class="switch-group">
+                    <div class="switch-label">
+                        <span id="title-works" class="switch-title">Aktif Yol Çalışmaları</span>
+                        <span id="desc-works" class="switch-desc">Yol yapım, daralma ve bakım bölgeleri</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="filter-works" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Warnings / Incidents List -->
+            <div>
+                <div id="title-warnings" class="warning-section-title">
+                    <i class="fas fa-triangle-exclamation"></i> Yol Üzerindeki Uyarılar
+                </div>
+                <div id="warnings-list" class="warnings-container" style="margin-top: 8px;">
+                    <!-- Dynamically populated -->
+                    <div class="warning-item" style="justify-content: center; border-left: none; opacity: 0.6;">
+                        <span id="warnings-placeholder" style="font-size: 13px;">Rota çizildiğinde uyarılar burada listelenecektir.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Leaflet Routing Machine JS -->
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+    
+    <!-- Custom Apple-like Cursor -->
+    <div class="custom-cursor-dot"></div>
+    <div class="custom-cursor-outline"></div>
+
+    <!-- App Databases and logic -->
+    <script src="cities.js"></script>
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+
+</body>
+</html>
