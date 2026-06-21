@@ -81,7 +81,13 @@ const TRANSLATIONS = {
         speakNavStart: "Navigasyon başladı, güvenli yolculuklar dileriz.",
         hour: "saat",
         minute: "dakika",
-        kmRemaining: (rem) => `${rem} km kaldı`
+        kmRemaining: (rem) => `${rem} km kaldı`,
+        restLabel: "Mola Alanları ve Dinlenme Tesisleri",
+        restDesc: "Yol üzerindeki dinlenme ve mola yerleri",
+        gasLabel: "Akaryakıt İstasyonları (Petroller)",
+        gasDesc: "Akaryakıt istasyonları ve şarj noktaları",
+        speakRest: (dist, name) => `Yaklaşık ${dist} kilometre sonra dinlenme tesisi bulunmaktadır. ${name}.`,
+        speakGas: (dist, name) => `Yaklaşık ${dist} kilometre sonra akaryakıt istasyonu bulunmaktadır. ${name}.`
     },
     en: {
         titleAccent: "Route Guide",
@@ -121,7 +127,13 @@ const TRANSLATIONS = {
         speakNavStart: "Navigation started, drive safely.",
         hour: "hours",
         minute: "minutes",
-        kmRemaining: (rem) => `${rem} km remaining`
+        kmRemaining: (rem) => `${rem} km remaining`,
+        restLabel: "Rest Areas & Facilities",
+        restDesc: "Rest stops and facilities along route",
+        gasLabel: "Gas Stations & Charging Hubs",
+        gasDesc: "Gas stations and EV charging points",
+        speakRest: (dist, name) => `Rest area in ${dist} kilometers. ${name}.`,
+        speakGas: (dist, name) => `Gas station in ${dist} kilometers. ${name}.`
     },
     es: {
         titleAccent: "Guía de Rutas",
@@ -557,7 +569,9 @@ let filters = {
     tolls: true,
     radars: true,
     roadworks: true,
-    voice: true
+    voice: true,
+    restareas: true,
+    gasstations: true
 };
 
 // Geolocation real-time navigation tracking state
@@ -578,16 +592,25 @@ document.addEventListener("DOMContentLoaded", () => {
     // Auto-request location access on app entry (Highly reliable settings, no timeout)
     locateUser();
     
-    // Safety fallback: Hide loading screen after 3 seconds if GPS hangs or gets blocked
-    setTimeout(hideLoadingScreen, 3000);
+    // Safety fallback: Hide loading screen after 3.2 seconds if GPS hangs or gets blocked
+    setTimeout(hideLoadingScreen, 3200);
 });
+
+// Track app load start time to ensure user experiences the full map animation sequence
+const appLoadedTime = Date.now();
+const minimumLoadingDuration = 3000; // 3.0 seconds (SVG animation finishes at 2.7s)
 
 // Hide Loading Screen Overlay
 function hideLoadingScreen() {
-    const loader = document.getElementById('loading-screen');
-    if (loader && !loader.classList.contains('fade-out')) {
-        loader.classList.add('fade-out');
-    }
+    const elapsed = Date.now() - appLoadedTime;
+    const remainingTime = Math.max(0, minimumLoadingDuration - elapsed);
+    
+    setTimeout(() => {
+        const loader = document.getElementById('loading-screen');
+        if (loader && !loader.classList.contains('fade-out')) {
+            loader.classList.add('fade-out');
+        }
+    }, remainingTime);
 }
 
 
@@ -752,6 +775,16 @@ function setupEventListeners() {
         updateMarkersVisibility();
     });
 
+    document.getElementById('filter-rest').addEventListener('change', (e) => {
+        filters.restareas = e.target.checked;
+        updateMarkersVisibility();
+    });
+
+    document.getElementById('filter-gas').addEventListener('change', (e) => {
+        filters.gasstations = e.target.checked;
+        updateMarkersVisibility();
+    });
+
     // Main action buttons
     document.getElementById('route-btn').addEventListener('click', calculateRoute);
     document.getElementById('sim-btn').addEventListener('click', toggleNavigation); // Trigger real GPS tracking navigation!
@@ -889,6 +922,11 @@ function updateUILanguage() {
     document.getElementById('desc-radars').textContent = t.radarsDesc;
     document.getElementById('title-works').textContent = t.worksLabel;
     document.getElementById('desc-works').textContent = t.worksDesc;
+
+    if (document.getElementById('title-rest')) document.getElementById('title-rest').textContent = t.restLabel || "Rest Areas";
+    if (document.getElementById('desc-rest')) document.getElementById('desc-rest').textContent = t.restDesc || "Rest stops along route";
+    if (document.getElementById('title-gas')) document.getElementById('title-gas').textContent = t.gasLabel || "Gas Stations";
+    if (document.getElementById('desc-gas')) document.getElementById('desc-gas').textContent = t.gasDesc || "Gas stations along route";
     
     // Warnings header
     document.getElementById('title-warnings').innerHTML = `<i class="fas fa-triangle-exclamation"></i> ${t.warningsTitle}`;
@@ -1270,6 +1308,60 @@ function analyzeRouteIncidents() {
         }
     });
 
+    // Check Static Rest Areas
+    REST_AREAS.forEach(rest => {
+        let minDistance = Infinity;
+        let bestIndex = -1;
+        
+        for (let i = 0; i < routeCoordinates.length; i++) {
+            const dist = getDistanceKm(rest, routeCoordinates[i]);
+            if (dist < minDistance) {
+                minDistance = dist;
+                bestIndex = i;
+            }
+        }
+        
+        if (minDistance < maxDistanceKm) {
+            const distanceAlong = calculateDistanceAlongRoute(bestIndex);
+            routeIncidents.push({
+                type: 'rest',
+                name: rest.name,
+                detail: rest.detail,
+                lat: rest.lat,
+                lng: rest.lng,
+                distanceAlong: distanceAlong,
+                routeIndex: bestIndex
+            });
+        }
+    });
+
+    // Check Static Gas Stations
+    GAS_STATIONS.forEach(gas => {
+        let minDistance = Infinity;
+        let bestIndex = -1;
+        
+        for (let i = 0; i < routeCoordinates.length; i++) {
+            const dist = getDistanceKm(gas, routeCoordinates[i]);
+            if (dist < minDistance) {
+                minDistance = dist;
+                bestIndex = i;
+            }
+        }
+        
+        if (minDistance < maxDistanceKm) {
+            const distanceAlong = calculateDistanceAlongRoute(bestIndex);
+            routeIncidents.push({
+                type: 'gas',
+                name: gas.name,
+                detail: gas.detail,
+                lat: gas.lat,
+                lng: gas.lng,
+                distanceAlong: distanceAlong,
+                routeIndex: bestIndex
+            });
+        }
+    });
+
     // D. Procedural Generation along long paths
     if (routeCoordinates.length > 200) {
         const totalPoints = routeCoordinates.length;
@@ -1280,7 +1372,7 @@ function analyzeRouteIncidents() {
             const pt = routeCoordinates[targetIdx];
             const distAlong = calculateDistanceAlongRoute(targetIdx);
             
-            const incidentType = s % 3;
+            const incidentType = s % 5;
             
             if (incidentType === 0) {
                 routeIncidents.push({
@@ -1302,19 +1394,89 @@ function analyzeRouteIncidents() {
                     distanceAlong: distAlong,
                     routeIndex: targetIdx
                 });
-            } else {
+            } else if (incidentType === 2) {
                 const nearStaticToll = routeIncidents.some(inc => inc.type === 'toll' && getDistanceKm(inc, pt) < 30);
                 if (!nearStaticToll) {
+                    // Find nearest toll road segment to identify which otoyol it is
+                    let nearestTollRoad = null;
+                    let minTollDist = Infinity;
+                    TOLL_ROADS.forEach(tr => {
+                        if (tr.name.includes('O-')) {
+                            const d = getDistanceKm(tr, pt);
+                            if (d < minTollDist) {
+                                minTollDist = d;
+                                nearestTollRoad = tr;
+                            }
+                        }
+                    });
+
+                    let tollNameTR = 'Otoyol HGS Geçiş Gişesi';
+                    let tollNameEN = 'Highway HGS Toll Plaza';
+                    let tollPrice = '75 TL';
+
+                    // If it's close enough (e.g. within 120 km of the highway reference coordinate)
+                    if (nearestTollRoad && minTollDist < 120) {
+                        if (nearestTollRoad.name.includes('O-5')) {
+                            tollNameTR = 'O-5 Otoyolu HGS Geçiş Gişesi';
+                            tollNameEN = 'O-5 Highway HGS Toll Plaza';
+                            tollPrice = '340 TL';
+                        } else if (nearestTollRoad.name.includes('O-7')) {
+                            tollNameTR = 'O-7 Otoyolu HGS Geçiş Gişesi';
+                            tollNameEN = 'O-7 Highway HGS Toll Plaza';
+                            tollPrice = '195 TL';
+                        } else if (nearestTollRoad.name.includes('O-21')) {
+                            tollNameTR = 'O-21 Otoyolu HGS Geçiş Gişesi';
+                            tollNameEN = 'O-21 Highway HGS Toll Plaza';
+                            tollPrice = '125 TL';
+                        } else if (nearestTollRoad.name.includes('O-4')) {
+                            tollNameTR = 'O-4 Otoyolu HGS Geçiş Gişesi';
+                            tollNameEN = 'O-4 Highway HGS Toll Plaza';
+                            tollPrice = '95 TL';
+                        } else if (nearestTollRoad.name.includes('O-52')) {
+                            tollNameTR = 'O-52 Otoyolu HGS Geçiş Gişesi';
+                            tollNameEN = 'O-52 Highway HGS Toll Plaza';
+                            tollPrice = '55 TL';
+                        } else {
+                            tollNameTR = `${nearestTollRoad.name} HGS Geçiş Gişesi`;
+                            tollNameEN = `${nearestTollRoad.name} HGS Toll Plaza`;
+                            tollPrice = '110 TL';
+                        }
+                    } else {
+                        // Default fallback procedural toll pricing
+                        const prices = ['55 TL', '75 TL', '85 TL', '110 TL'];
+                        tollPrice = prices[targetIdx % prices.length];
+                    }
+
                     routeIncidents.push({
                         type: 'toll',
-                        name: currentLang === 'tr' ? 'Otoyol HGS Geçiş Gişesi' : 'Highway HGS Toll Plaza',
-                        detail: '45 TL',
+                        name: currentLang === 'tr' ? tollNameTR : tollNameEN,
+                        detail: tollPrice,
                         lat: pt.lat,
                         lng: pt.lng,
                         distanceAlong: distAlong,
                         routeIndex: targetIdx
                     });
                 }
+            } else if (incidentType === 3) {
+                routeIncidents.push({
+                    type: 'rest',
+                    name: currentLang === 'tr' ? 'Otoyol Mola Alanı & Tesisleri' : 'Highway Rest Stop & Facilities',
+                    detail: currentLang === 'tr' ? 'Dinlenme Tesisleri, WC, Kafeterya' : 'Restrooms, Dining, Cafe',
+                    lat: pt.lat,
+                    lng: pt.lng,
+                    distanceAlong: distAlong,
+                    routeIndex: targetIdx
+                });
+            } else {
+                routeIncidents.push({
+                    type: 'gas',
+                    name: currentLang === 'tr' ? 'Otoyol Akaryakıt & Şarj İstasyonu' : 'Highway Gas & EV Charging Station',
+                    detail: currentLang === 'tr' ? 'Opet Petrol İstasyonu' : 'Opet Gas Station',
+                    lat: pt.lat,
+                    lng: pt.lng,
+                    distanceAlong: distAlong,
+                    routeIndex: targetIdx
+                });
             }
         }
     }
@@ -1359,6 +1521,10 @@ function drawIncidentMarkers() {
             iconHtml = '<i class="fas fa-camera"></i>';
         } else if (inc.type === 'work') {
             iconHtml = '<i class="fas fa-cone"></i>';
+        } else if (inc.type === 'rest') {
+            iconHtml = '<i class="fas fa-coffee"></i>';
+        } else if (inc.type === 'gas') {
+            iconHtml = '<i class="fas fa-gas-pump"></i>';
         }
         
         const mapIcon = L.divIcon({
@@ -1374,9 +1540,11 @@ function drawIncidentMarkers() {
         const limitLabel = currentLang === 'tr' ? 'Hız Limiti' : (currentLang === 'en' ? 'Speed Limit' : 'Limit');
         const statusLabel = currentLang === 'tr' ? 'Durum' : (currentLang === 'en' ? 'Status' : 'Info');
         
+        const detailsLabel = currentLang === 'tr' ? 'Detay' : (currentLang === 'en' ? 'Details' : 'Details');
         let labelText = statusLabel;
         if (inc.type === 'toll') labelText = priceLabel;
         if (inc.type === 'radar') labelText = limitLabel;
+        if (inc.type === 'rest' || inc.type === 'gas') labelText = detailsLabel;
         
         const popupContent = `
             <div style="font-family: 'Outfit', sans-serif; color: #2f3542; padding: 4px;">
@@ -1387,7 +1555,14 @@ function drawIncidentMarkers() {
         `;
         marker.bindPopup(popupContent);
         
-        if (filters[inc.type + 's'] || (inc.type === 'toll' && filters.tolls) || (inc.type === 'roadworks' && filters.roadworks)) {
+        let isVisible = false;
+        if (inc.type === 'toll' && filters.tolls) isVisible = true;
+        else if (inc.type === 'radar' && filters.radars) isVisible = true;
+        else if (inc.type === 'work' && filters.roadworks) isVisible = true;
+        else if (inc.type === 'rest' && filters.restareas) isVisible = true;
+        else if (inc.type === 'gas' && filters.gasstations) isVisible = true;
+
+        if (isVisible) {
             marker.addTo(map);
         }
         
@@ -1404,7 +1579,9 @@ function updateMarkersVisibility() {
         const isVisible = 
             (inc.type === 'toll' && filters.tolls) ||
             (inc.type === 'radar' && filters.radars) ||
-            (inc.type === 'work' && filters.roadworks);
+            (inc.type === 'work' && filters.roadworks) ||
+            (inc.type === 'rest' && filters.restareas) ||
+            (inc.type === 'gas' && filters.gasstations);
             
         if (isVisible) {
             if (!map.hasLayer(marker)) {
@@ -1447,15 +1624,23 @@ function buildIncidentsUI() {
         } else if (inc.type === 'work') {
             icon = '<i class="fas fa-road-barrier"></i>';
             typeLabel = currentLang === 'tr' ? 'Yol Çalışması' : 'Road Works';
+        } else if (inc.type === 'rest') {
+            icon = '<i class="fas fa-coffee"></i>';
+            typeLabel = currentLang === 'tr' ? 'Mola Alanı' : 'Rest Area';
+        } else if (inc.type === 'gas') {
+            icon = '<i class="fas fa-gas-pump"></i>';
+            typeLabel = currentLang === 'tr' ? 'Akaryakıt İstasyonu' : 'Gas Station';
         }
         
         const priceLabel = currentLang === 'tr' ? 'Geçiş Ücreti' : (currentLang === 'en' ? 'Toll Fee' : 'Fee');
         const limitLabel = currentLang === 'tr' ? 'Hız Limiti' : (currentLang === 'en' ? 'Speed Limit' : 'Limit');
         const statusLabel = currentLang === 'tr' ? 'Durum' : (currentLang === 'en' ? 'Status' : 'Info');
         
+        const detailsLabel = currentLang === 'tr' ? 'Detay' : (currentLang === 'en' ? 'Details' : 'Details');
         let labelText = statusLabel;
         if (inc.type === 'toll') labelText = priceLabel;
         if (inc.type === 'radar') labelText = limitLabel;
+        if (inc.type === 'rest' || inc.type === 'gas') labelText = detailsLabel;
         
         item.innerHTML = `
             <div class="warning-icon">${icon}</div>
@@ -1806,22 +1991,34 @@ function checkUpcomingIncidents(currentLoc, currentDist) {
             let speakText = "";
             
             if (inc.type === 'radar') {
-                hud.classList.add('radar');
+                hud.className = 'alert-hud show radar';
                 icon.className = 'fas fa-camera';
                 textSpan.textContent = `${inc.name}: ${inc.detail}`;
                 speakText = t.speakRadar(distanceToIncident.toFixed(1), inc.detail);
                 setTimeout(() => hud.classList.remove('show'), 6000);
             } else if (inc.type === 'work') {
-                hud.classList.add('warning');
+                hud.className = 'alert-hud show warning';
                 icon.className = 'fas fa-triangle-exclamation';
                 textSpan.textContent = `${inc.name}: ${inc.detail}`;
                 speakText = t.speakWork(distanceToIncident.toFixed(1), inc.detail);
                 setTimeout(() => hud.classList.remove('show'), 6000);
             } else if (inc.type === 'toll') {
-                hud.classList.add('info');
+                hud.className = 'alert-hud show info';
                 icon.className = 'fas fa-credit-card';
                 textSpan.textContent = `${inc.name}: ${inc.detail}`;
                 speakText = t.speakToll(distanceToIncident.toFixed(1), inc.name, inc.detail);
+                setTimeout(() => hud.classList.remove('show'), 6000);
+            } else if (inc.type === 'rest') {
+                hud.className = 'alert-hud show info';
+                icon.className = 'fas fa-coffee';
+                textSpan.textContent = `${inc.name}: ${inc.detail}`;
+                speakText = t.speakRest ? t.speakRest(distanceToIncident.toFixed(1), inc.name) : `Mola alanı ${distanceToIncident.toFixed(1)} kilometre sonra.`;
+                setTimeout(() => hud.classList.remove('show'), 6000);
+            } else if (inc.type === 'gas') {
+                hud.className = 'alert-hud show info';
+                icon.className = 'fas fa-gas-pump';
+                textSpan.textContent = `${inc.name}: ${inc.detail}`;
+                speakText = t.speakGas ? t.speakGas(distanceToIncident.toFixed(1), inc.name) : `Akaryakıt istasyonu ${distanceToIncident.toFixed(1)} kilometre sonra.`;
                 setTimeout(() => hud.classList.remove('show'), 6000);
             }
             
@@ -1860,6 +2057,8 @@ function showHUD(message, type = "info") {
         hud.classList.remove('show');
     }, 4000);
 }
+
+
 
 // Custom Cursor Logic for Desktop (iPadOS-like inertia & hover magnet behavior)
 function initCustomCursor() {
